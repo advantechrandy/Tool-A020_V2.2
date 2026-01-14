@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>單相浸沒式冷卻冷卻量計算</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: 'JetBrains Mono', 'PingFang TC', monospace;
+        }
+        .panel {
+            background: #1e293b;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            border-top: 4px solid #3b82f6;
+        }
+        .input-dark {
+            background-color: #0f172a;
+            border: 1px solid #475569;
+            color: #38bdf8;
+        }
+        .input-dark:focus {
+            border-color: #3b82f6;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+        .accent-glow {
+            text-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+        }
+        /* 隱藏 Chrome, Safari, Edge, Opera 的輸入框箭頭 */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        /* 隱藏 Firefox 的輸入框箭頭 */
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-5xl mx-auto">
+        <header class="flex flex-col md:flex-row justify-between items-end mb-8 border-b border-slate-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-black text-white tracking-tighter uppercase italic accent-glow">
+                    Immersion Cooling <span class="text-blue-500">Analyzer v2.2</span>
+                </h1>
+                <p class="text-slate-400 text-sm mt-1">單向浸沒式冷卻熱管理計算</p>
+            </div>
+            <div class="text-xs font-mono text-slate-500 mt-4 md:mt-0">
+                STATUS: OPTIMIZED<br>
+                CREATED BY RANDY CHEN
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 左側：參數設定 -->
+            <div class="lg:col-span-1 space-y-6">
+                <div class="panel p-5 rounded-sm">
+                    <h2 class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4 flex items-center">
+                        <span class="w-2 h-2 bg-blue-500 mr-2 animate-pulse"></span>
+                        系統輸入 / System Inputs
+                    </h2>
+                    
+                    <div class="space-y-5">
+                        <!-- 冷卻液選擇（僅留電子氟化液） -->
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-tight">冷卻液類型 (Fluid Type)</label>
+                            <select id="fluidPresets" onchange="applyPreset()" class="w-full p-2 rounded input-dark text-sm">
+                                <option value="fluorinated" selected>電子氟化液 (Electronic Fluorinated Fluid)</option>
+                                <option value="custom">-- 手動自定義參數 (Custom) --</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-tight">總發熱功率 Q (單位: kW)</label>
+                            <input type="number" id="power" value="20" class="w-full p-2 rounded input-dark font-mono text-lg text-center" placeholder="0.00">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase leading-tight">比熱容 Cp<br>(kJ/kg·K)</label>
+                                <input type="number" id="specificHeat" value="1.1" step="0.01" class="w-full p-2 rounded input-dark text-sm font-mono text-center">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase leading-tight">密度 ρ<br>(kg/m³)</label>
+                                <input type="number" id="density" value="1700" class="w-full p-2 rounded input-dark text-sm font-mono text-center">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-tight">進出口溫差 ΔT (單位: °C)</label>
+                            <input type="number" id="deltaT" value="10" class="w-full p-2 rounded input-dark font-mono text-lg text-center" placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <button onclick="calculate()" class="w-full mt-8 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-sm transition uppercase tracking-widest text-sm shadow-[0_0_15px_rgba(37,99,235,0.4)]">
+                        執行計算指令
+                    </button>
+                </div>
+            </div>
+
+            <!-- 右側：監測面板 -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="panel p-6 rounded-sm min-h-[400px]">
+                    <h2 class="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-6 flex items-center">
+                        <span class="w-2 h-2 bg-emerald-500 mr-2"></span>
+                        即時計算結果 / Telemetry Data
+                    </h2>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- 質量流量卡片 -->
+                        <div class="bg-[#161e2e] p-6 border-l-2 border-blue-500">
+                            <div class="text-slate-500 text-xs font-bold uppercase mb-2">Mass Flow Rate (ṁ)</div>
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-4xl font-black text-blue-400 font-mono italic" id="massFlow">--</span>
+                                <span class="text-slate-400 font-bold">kg/s</span>
+                            </div>
+                        </div>
+
+                        <!-- 體積流量卡片 -->
+                        <div class="bg-[#161e2e] p-6 border-l-2 border-emerald-500">
+                            <div class="text-slate-500 text-xs font-bold uppercase mb-2">Volume Flow Rate (V)</div>
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-4xl font-black text-emerald-400 font-mono italic" id="volFlowLpm">--</span>
+                                <span class="text-slate-400 font-bold">LPM</span>
+                            </div>
+                            <div class="text-xs text-slate-500 mt-2 font-mono" id="volFlowM3h">-- m³/h</div>
+                        </div>
+                    </div>
+
+                    <!-- 公式區 -->
+                    <div class="mt-10 border-t border-slate-700 pt-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                            <div class="text-xs text-slate-400 leading-relaxed font-mono">
+                                <div class="mb-2 text-blue-400 font-bold underline uppercase">Thermodynamic Equation:</div>
+                                Q[kW] = ṁ[kg/s] · Cp[kJ/kg·K] · ΔT[K]<br>
+                                ṁ = Q / (Cp · ΔT)<br>
+                                V = ṁ / ρ
+                            </div>
+                            <div class="bg-slate-900/50 p-4 border border-slate-800 rounded">
+                                <div class="text-[10px] text-slate-500 mb-2 uppercase">當前流體屬性摘要</div>
+                                <div class="flex justify-between text-xs">
+                                    <span>密度 (ρ):</span>
+                                    <span class="text-blue-300 font-mono" id="summaryRho">1700 kg/m³</span>
+                                </div>
+                                <div class="flex justify-between text-xs mt-1">
+                                    <span>比熱 (Cp):</span>
+                                    <span class="text-blue-300 font-mono" id="summaryCp">1.10 kJ/kg·K</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 警告/提示訊息 -->
+                <div class="bg-blue-900/20 border border-blue-800 p-4 rounded text-xs text-blue-300 flex items-start gap-3">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                    <div>
+                        <span class="font-bold uppercase block mb-1">Engineering Note:</span>
+                        電子氟化液具備高絕緣性。計算時請確認比熱容是否隨運行溫度變化而需修正（本計算器採常溫均值）。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-12 text-center text-slate-600 text-[10px] uppercase tracking-[0.2em]">
+            &copy; 2026 Thermal Management Systems // Industrial Calculation Module
+        </footer>
+    </div>
+
+    <script>
+        // 阻擋右鍵選單
+        document.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+        });
+
+        const fluidData = {
+            fluorinated: { cp: 1.10, rho: 1700 }
+        };
+
+        function applyPreset() {
+            const preset = document.getElementById('fluidPresets').value;
+            if (preset !== 'custom') {
+                document.getElementById('specificHeat').value = fluidData[preset].cp;
+                document.getElementById('density').value = fluidData[preset].rho;
+            }
+            calculate();
+        }
+
+        function calculate() {
+            const Q = parseFloat(document.getElementById('power').value);
+            const Cp = parseFloat(document.getElementById('specificHeat').value);
+            const rho = parseFloat(document.getElementById('density').value);
+            const dT = parseFloat(document.getElementById('deltaT').value);
+
+            // 更新摘要
+            document.getElementById('summaryCp').innerText = (Cp || 0).toFixed(2) + ' kJ/kg·K';
+            document.getElementById('summaryRho').innerText = (rho || 0) + ' kg/m³';
+
+            if (isNaN(Q) || isNaN(Cp) || isNaN(rho) || isNaN(dT) || dT <= 0) {
+                displayError();
+                return;
+            }
+
+            // 質量流量 ṁ = Q / (Cp * ΔT)
+            const m_dot = Q / (Cp * dT);
+
+            // 體積流量
+            const v_dot_m3s = m_dot / rho;
+            const v_dot_m3h = v_dot_m3s * 3600;
+            const v_dot_lpm = v_dot_m3s * 1000 * 60;
+
+            // UI 更新
+            document.getElementById('massFlow').innerText = m_dot.toFixed(4);
+            document.getElementById('volFlowLpm').innerText = v_dot_lpm.toFixed(2);
+            document.getElementById('volFlowM3h').innerText = `${v_dot_m3h.toFixed(3)} m³/h`;
+        }
+
+        function displayError() {
+            document.getElementById('massFlow').innerText = "ERR";
+            document.getElementById('volFlowLpm').innerText = "ERR";
+            document.getElementById('volFlowM3h').innerText = "-- m³/h";
+        }
+
+        window.onload = calculate;
+    </script>
+</body>
+</html>
